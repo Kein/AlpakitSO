@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -20,20 +20,6 @@ namespace Alpakit.Automation
 
 	public class PackagePlugin : BuildCommand
 	{
-
-		private static string GetGameLaunchURL(BuildCommand cmd)
-		{
-			return "steam://rungameid/1790600";
-		}
-
-		private static void LaunchGame(BuildCommand cmd)
-		{
-			if (cmd.ParseParam("LaunchGame"))
-			{
-				var gameLaunchUrl = GetGameLaunchURL(cmd);
-				System.Diagnostics.Process.Start(gameLaunchUrl);
-			}
-		}
 
 		private static void CopyPluginToTheGameDir(string gameDir, FileReference projectFile, FileReference pluginFile,
 			string stagingDir)
@@ -62,6 +48,9 @@ namespace Alpakit.Automation
 			var pluginName = cmd.ParseRequiredStringParam("PluginName");
 			var projectFile = new FileReference(projectFileName);
 
+			if (string.IsNullOrEmpty(pluginName))
+				throw new ArgumentException("-PluginName is required to package a mod/plugin");
+
 			var projectParameters = new ProjectParams(
 				projectFile,
 				cmd,
@@ -76,15 +65,17 @@ namespace Alpakit.Automation
 
 				// Alpakit shared configuration
 				Cook: true,
-				AdditionalCookerOptions: "-AllowUncookedAssetReferences",
+				AdditionalCookerOptions: "-AllowUncookedAssetReferences -versioncookedcontent",
+				UnversionedCookedContent: false,
+				SkipCookingEditorContent: true,
 				DLCIncludeEngineContent: false,
-				Compressed: true,
+				Compressed: false,
 				Pak: true,
 				Stage: true,
 				DLCName: pluginName,
 
 				// TODO @SML: I would like to pass an empty based on release version, but the cooker checks against it
-				BasedOnReleaseVersion: "SZMLNonExistentBasedOnReleaseVersion"
+				BasedOnReleaseVersion: "NonExistentBasedOnReleaseVersion"
             );
 
 			projectParameters.ValidateAndLog();
@@ -146,8 +137,10 @@ namespace Alpakit.Automation
 			return deployContextList;
 		}
 
-		private static void RemapCookedPluginsContentPaths(ProjectParams projectParams, IEnumerable<DeploymentContext> deploymentContexts) {
-			foreach (var deploymentContext in deploymentContexts) {
+		private static void RemapCookedPluginsContentPaths(ProjectParams projectParams, IEnumerable<DeploymentContext> deploymentContexts)
+		{
+			foreach (var deploymentContext in deploymentContexts)
+			{
 				//We need to make sure content paths will be relative to ../../../ProjectRoot/Mods/DLCFilename/Content,
 				//because that's what will be used in runtime as a content path for /DLCFilename/ mount point.
 				//But both project and engine plugins are actually cooked by different paths:
@@ -159,6 +152,9 @@ namespace Alpakit.Automation
 				//deploymentContext.RemapDirectories.Add(Tuple.Create());
 
 				var projectName = projectParams.RawProjectPath.GetFileNameWithoutAnyExtensions();
+
+				if (string.IsNullOrEmpty(projectParams.DLCFile?.GetFileName()))
+					throw new ArgumentException($"Expected DLCFile populated, got none (-PluginName is missing?)");
 
 				string dlcSourceDirectory;
 				if (projectParams.DLCFile.IsUnderDirectory(deploymentContext.EngineRoot))
@@ -247,65 +243,59 @@ namespace Alpakit.Automation
 		{
 			foreach (var deploymentContext in deploymentContexts)
 			{
-				if (SSParams.CopyToGameDirectory &&
-				    deploymentContext.FinalCookPlatform == "Windows")
+				if (SSParams.CopyToGameDirectory && deploymentContext.FinalCookPlatform == "Windows")
 				{
 					var stageRootDirectory = deploymentContext.StageDirectory;
 					var relativePluginPath = GetPluginPathRelativeToStageRoot(projectParams, deploymentContext);
 					var stagePluginDirectory = Path.Combine(stageRootDirectory.ToString(), relativePluginPath);
 
 					if (SSParams.GameDirectory == null)
-					{
-						throw new AutomationException(
-							"-CopyToGameDirectory was specified, but no game directory path has been provided");
-					}
+						throw new AutomationException("-CopyToGameDirectory was specified, but no game directory path has been provided");
 					
 					CopyPluginToTheGameDir(SSParams.GameDirectory, projectParams.RawProjectPath,
 						projectParams.DLCFile, stagePluginDirectory);
 				}
 			}
 
-			if (SSParams.StartGame)
-			{
+			if (SSParams.StartGame && !string.IsNullOrEmpty(SSParams.LaunchGameURL))
 				System.Diagnostics.Process.Start(new ProcessStartInfo(SSParams.LaunchGameURL) { UseShellExecute = true });
-			}
 		}
 
 		private static void CleanStagingDirectories(IEnumerable<DeploymentContext> deploymentContexts)
 		{
 			foreach (var deploymentContext in deploymentContexts)
-			{
 				if (DirectoryExists(deploymentContext.StageDirectory.ToString()))
-				{
 					DeleteDirectory(deploymentContext.StageDirectory);
-				}
-			}
 		}
 
 		public override void ExecuteBuild()
         {
-            string gameDir = ParseOptionalStringParam("GameDir");
-            if (!string.IsNullOrEmpty(gameDir))
+			var projectParams = GetParams(this);
+			var SSParams = new SSParams();
+			string projectName = projectParams.RawProjectPath.GetFileNameWithoutAnyExtensions();
+			string gameDirPath = ParseOptionalStringParam("GameDir");
+
+			if (!string.IsNullOrEmpty(gameDirPath))
 			{
-				var bootstrapExePath = Path.Combine(gameDir, "SparkingZERO.exe");
-				if (!FileExists(bootstrapExePath))
+				var gameDir = new DirectoryInfo(gameDirPath);
+				var contentRoot = Path.Combine(gameDir.FullName, projectName);
+				if (!DirectoryExists(contentRoot))
+					throw new AutomationException("Provided -GameDir is invalid, expected to find {0}", contentRoot);
+
+				SSParams.GameDirectory = gameDir.FullName ?? string.Empty;
+				SSParams.StartGame = ParseParam("LaunchGame");
+				SSParams.CopyToGameDirectory = ParseParam("CopyToGameDir");
+
+				if (SSParams.StartGame)
 				{
-					throw new AutomationException("Provided -GameDir is invalid: '{0}'", gameDir);
+					// In 99% cases, UE games have projectName equal to the root project content folder,
+					// this way we can validate if we are in the correct game folder.
+					var allEXEs = gameDir.GetFiles("*.exe", new EnumerationOptions() { RecurseSubdirectories = false });
+					SSParams.LaunchGameURL = allEXEs[0]?.FullName ?? string.Empty;
+					if (Path.GetFileNameWithoutExtension(SSParams.LaunchGameURL) != projectName)
+						LogWarning($"Mismatch between executable name and project name: '{Path.GetFileNameWithoutExtension(SSParams.LaunchGameURL)}' != '{projectName}'");
 				}
 			}
-
-			var SSParams = new SSParams
-			{
-				GameDirectory = gameDir,
-				StartGame = ParseParam("LaunchGame"),
-				CopyToGameDirectory = ParseParam("CopyToGameDir")
-			};
-			if (SSParams.StartGame)
-			{
-				SSParams.LaunchGameURL = GetGameLaunchURL(this);
-			}
-
-			var projectParams = GetParams(this);
 
 			Project.Cook(projectParams);
 			var deploymentContexts = CreateDeploymentContexts(projectParams);
