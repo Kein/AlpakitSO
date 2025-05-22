@@ -4,9 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using AutomationTool;
-using EpicGames.Core;
+using Tools.DotNETCommon;
 using UnrealBuildTool;
 using AutomationScripts;
+using Ionic.Zip;
 
 namespace Alpakit.Automation
 {
@@ -234,7 +235,12 @@ namespace Alpakit.Automation
 					DeleteFile(zipFilePath);
 				}
 
-				ZipFile.CreateFromDirectory(stagePluginDirectory, zipFilePath);
+				using (ZipFile pluginzip = new ZipFile())
+				{
+					pluginzip.AddDirectory(stagePluginDirectory, "");
+					pluginzip.Save(zipFilePath);
+
+				}
 			}
 		}
 
@@ -290,7 +296,7 @@ namespace Alpakit.Automation
 				{
 					// In 99% cases, UE games have projectName equal to the root project content folder,
 					// this way we can validate if we are in the correct game folder.
-					var allEXEs = gameDir.GetFiles("*.exe", new EnumerationOptions() { RecurseSubdirectories = false });
+					var allEXEs = gameDir.GetFiles("*.exe", SearchOption.TopDirectoryOnly);
 					SSParams.LaunchGameURL = allEXEs[0]?.FullName ?? string.Empty;
 					if (Path.GetFileNameWithoutExtension(SSParams.LaunchGameURL) != projectName)
 						LogWarning($"Mismatch between executable name and project name: '{Path.GetFileNameWithoutExtension(SSParams.LaunchGameURL)}' != '{projectName}'");
