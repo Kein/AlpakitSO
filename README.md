@@ -9,5 +9,5 @@
 7. Alternatively to #5, install Alpakit plugin from this repo and rebuild game project (do NOT install as Engine plugin) and use toolbar menu to package straight into game directory
 
 # Credits
-Alpakit courtesy of https://github.com/satisfactorymodding/SatisfactoryUnrealProject (hard fork)
+Alpakit courtesy of https://github.com/satisfactorymodding/SatisfactoryUnrealProject (hard fork)  
 Changes and updates: KZ
