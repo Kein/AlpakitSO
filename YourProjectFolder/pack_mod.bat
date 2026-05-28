@@ -9,13 +9,17 @@ set OutputParam=-CopyToGameDir -GameDir=%~2
 
 
 IF NOT EXIST %UATPath% (
-    echo %r%Suppled path is not a valid path to to AutomationTool.exe:%w%
+    echo %r%Supplied path is not a valid path to to AutomationTool.exe:%w%
     echo %UATPath%
     Exit /B
 )
 
 IF "%~1"=="" (
     echo Mod name is required!
+    IF EXIST Mods\ (
+        echo Current exisiting mods:
+        dir Mods\ /ad /b
+    )
     Exit /B
 )
 
