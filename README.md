@@ -6,7 +6,7 @@
 4. Copy the content of `YourProjectFolder\` inside your game project mockup
 5. Rename and update the Example Plugin
 6. See provided BAT file on how to package the mod manually from CLI
-7. Alternatively to #5, install Alpakit plugin from this repo and rebuild game project (do NOT install as Engine plugin) and use toolbar menu to package straight into game directory
+7. Alternatively to #5, install Alpakit plugin from this repo and rebuild game project (copy to your project's `Plugins/` folder, do NOT install as Engine plugin) and use Editor's toolbar menu to package straight into a game directory
 
 # Credits
 Alpakit courtesy of https://github.com/satisfactorymodding/SatisfactoryUnrealProject (hard fork)  
